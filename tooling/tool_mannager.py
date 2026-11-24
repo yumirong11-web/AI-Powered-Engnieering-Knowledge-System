@@ -199,3 +199,7 @@ class ToolManager:
             if t.name == name:
                 return t
         raise KeyError(f"未注册的工具: {name}")
+
+if __name__ == "__main__":
+    tm = ToolManager(auto_install=True)
+    tm.ensure_all()

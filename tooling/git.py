@@ -31,12 +31,12 @@ class GitStatusWarning(GitError):
 class GitClient:
     def __init__(self, repo_path: str | Path, runner: CommandRunner | None = None):
         self.repo_path = Path(repo_path)
-        self._runner = runner if runner is not None else CommandRunner()
+        self._runner = runner if runner else CommandRunner()
 
-    def _git(self, *args: str, timeout: float | None = None, 
+    def _git(self, args: list[str], timeout: float | None = None, 
              check: bool = False) -> CommandResult:
         self._check_repo_dir()
-        result = self._runner.run(["git", *args], cwd=self.repo_path, 
+        result = self._runner.run(["git"] + args, cwd=self.repo_path, 
                                   timeout=timeout, check=check)
         if result.returncode != 0:
             stderr = result.stderr.strip()
@@ -70,7 +70,7 @@ class GitClient:
             raise FileNotFoundError(f"repo directory does not exist: {self.repo_path}")
         if not self.repo_path.is_dir():
             raise NotADirectoryError(f"repo direcory is not a directory: {self.repo_path}")
-        
+                
     def _check_lock_error(self, result: CommandResult) -> None:
         if result.returncode != 0 and "index.lock" in result.stderr:
             raise GitLockError(
@@ -79,7 +79,8 @@ class GitClient:
             )
         
     def rev_parse_head(self) -> str:
-        res = self._git("rev-parse", "HEAD")
+        git_command = ["rev-parse", "HEAD"]        
+        res = self._git(git_command)
         commit = res.stdout.strip()
         if not commit:
             raise GitError(f"git rev-parse HEAD return empty output",
@@ -87,16 +88,20 @@ class GitClient:
         return commit
 
     def current_branch(self) -> str:
-        result = self._git("branch", "--show-current")
+        git_command = ["branch", "--show-current"]                
+        result = self._git(git_command)
         branch = result.stdout.strip()
         if not branch:
             raise DetachedHeadError("HEAD is detached, not on any branch",
                 argv=list(result.argv), cwd=result.cwd)
 
     def short_status(self) -> str:
-        result = self._git("status", "--short")
+        git_command = ["status", "--short"]
+        result = self._git(git_command)
         self._check_lock_error(result)
         stderr = result.stderr.strip()
         if stderr:
-            logger.warning(f"git status warnings: {stderr}")
+            # todo 增加日志记录
+            pass
+            # logger.warning(f"git status warnings: {stderr}")
         return result.stdout.strip()

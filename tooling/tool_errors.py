@@ -3,7 +3,7 @@ class CommandError(Exception):
     def __init__(self, message: str, *, argv: list[str], cwd: str | None = None):
         self.argv = list(argv)
         self.cwd = cwd
-        super.__init__(message)
+        super().__init__(message)
 
 class ExecutableNotFoundError(CommandError):
     '''Executable File Not Found'''
