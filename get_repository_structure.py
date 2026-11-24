@@ -2,6 +2,8 @@ import subprocess
 
 from pathlib import Path
 
+from git import GitClient
+
 REPO_STRUCTURE_PROMPT = '''
 You are a senior C++ software architect.
 
@@ -63,67 +65,6 @@ import sys
 import platform
 from pathlib import Path
 
-
-class GitNotInstalledError(Exception):
-    """git 未安装且自动安装失败。"""
-
-
-def _install_git() -> None:
-    """根据平台调用包管理器安装 git，失败时抛 GitNotInstalledError。"""
-    system = platform.system()
-
-    if system == "Windows":
-        # Windows 无统一包管理器，优先尝试 winget，其次提示手动安装
-        if _which("winget"):
-            cmd = ["winget", "install", "--id", "Git.Git", "-e", "--source", "winget"]
-        elif _which("choco"):
-            cmd = ["choco", "install", "git", "-y"]
-        else:
-            raise GitNotInstalledError(
-                "未找到 winget 或 choco，请手动安装 Git: https://git-scm.com/downloads"
-            )
-    elif system == "Darwin":  # macOS
-        if _which("brew"):
-            cmd = ["brew", "install", "git"]
-        else:
-            raise GitNotInstalledError(
-                "未找到 Homebrew，请先安装 brew 或手动安装 Git"
-            )
-    elif system == "Linux":
-        # 根据发行版选择包管理器
-        if _which("apt-get"):
-            cmd = ["sudo", "apt-get", "install", "-y", "git"]
-        elif _which("dnf"):
-            cmd = ["sudo", "dnf", "install", "-y", "git"]
-        elif _which("yum"):
-            cmd = ["sudo", "yum", "install", "-y", "git"]
-        elif _which("pacman"):
-            cmd = ["sudo", "pacman", "-S", "--noconfirm", "git"]
-        else:
-            raise GitNotInstalledError("未识别的包管理器，请手动安装 Git")
-    else:
-        raise GitNotInstalledError(f"不支持的系统: {system}")
-
-    try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-    except subprocess.CalledProcessError as e:
-        raise GitNotInstalledError(
-            f"自动安装 Git 失败: {e.stderr.strip()}"
-        ) from e
-    except FileNotFoundError as e:
-        raise GitNotInstalledError(f"安装命令不可用: {cmd[0]}") from e
-
-
-def _which(name: str) -> bool:
-    """检查命令是否在 PATH 中。"""
-    from shutil import which
-    return which(name) is not None
-
-
-def _git_installed() -> bool:
-    """检查 git 是否可用。"""
-    return _which("git")
-
 def resolve_path(path: str | Path, base: str | Path | None = None) -> Path:
     """
     将 path 转为绝对路径。
@@ -138,24 +79,25 @@ def resolve_path(path: str | Path, base: str | Path | None = None) -> Path:
     return (Path(base).expanduser().resolve() / p).resolve()
 
 class RepositoryStructure:
-    def __init__(self, repo_path : str):
+    def __init__(self, repo_path : str, git_runner: GitClient | None = None):
         self.git_commit = None
         self.prog_lang = None
         self.code_size = None
         self.repo_path = resolve_path(repo_path)
-    def get_git_info(self):
-        if(Path(self.repo_path).is_dir()):
-            # todo 异常处理
-            result = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
-                cwd=self.repo_path,
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            self.git_commit = result.stdout.strip()
-        else:
-            raise NotADirectoryError(f"It is expected to be a directory, but in reality, it is not: {self.repo_path}")
+        self._git_runner = git_runner if git_runner is not None else GitClient(self.repo_path)
+
+    def get_git_commit(self) -> None:
+        self.git_commit = self._git_runner.rev_parse_head()
+
+    def get_git_branch(self) -> None:
+        result = self._git_runner.current_branch()
+        # 写入到某个文件
+    
+    def get_git_status(self) -> None:
+        result = self._git_runner.short_status()
+        # 写入到某个文件
+
+
 
 if __name__ == "__main__":
     windirstat_struct = RepositoryStructure("../../windirstat/")
