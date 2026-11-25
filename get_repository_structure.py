@@ -1,7 +1,19 @@
+import os
+import json
 from pathlib import Path
 from typing import Sequence
+from collections import Counter
+
+from deepseek_harness import DeepSeekHarness
+from dotenv import load_dotenv
+
 from tooling.git import GitClient
 from tooling.ripgrep import RipgrepClient
+from tooling.tree import TreeClient
+from tooling.scc import SccClient
+
+load_dotenv()
+api_key = os.environ["DEEPSEEK_API_KEY"] 
 
 REPO_STRUCTURE_PROMPT = '''
 You are a senior C++ software architect.
@@ -59,10 +71,16 @@ REPO_DIR_TREE_PATH = "./repository-tree.txt"
 FILE_INVENTORY_PATH = "./inventory-file.txt"
 FILE_EXT_STATS_PATH = "./extension-stats.csv"
 
-import subprocess
-from pathlib import Path
 
 REPO_STRUCTURE_PATH = "./windir_architecture/00_repository_map/01_repository_structure.md"
+def ensure_clean(s: str, label: str = "string") -> str:
+    """验证字符串无替换符、可被 UTF-8 严格编码。"""
+    if not isinstance(s, str):
+        raise TypeError(f"{label} 是 {type(s).__name__}，应为 str")
+    if "\ufffd" in s:
+        raise ValueError(f"{label} 含替换符 �，上游解码已损坏")
+    s.encode("utf-8", errors="strict")  # 抓不可编码的脏码点
+    return s
 
 def resolve_path(repo_path: str | Path, base: str | Path | None = None) -> Path:
     """
@@ -77,48 +95,148 @@ def resolve_path(repo_path: str | Path, base: str | Path | None = None) -> Path:
         base = Path(__file__).resolve()
     return (Path(base).expanduser().resolve() / p).resolve()
 
-def write_to_file(out_path: str | Path , content: Sequence[str]) -> None:
+def write_to_file(out_path: str | Path , content: Sequence[str], mode) -> None:
     out_path = Path(out_path)
     if not out_path.exists():
+        out_path.touch()
+    if not out_path.is_file():
         return
-    with open(out_path, mode='a', encoding="utf-8", errors="replace") as f:
+    with open(out_path, mode=mode, encoding="utf-8", errors="replace") as f:
         f.writelines(content)
 
 class RepositoryStructure:
-    def __init__(self, repo_path : str | Path, out_path: str | Path | None = None,
+    def __init__(self, repo_path : str | Path,
                  git_runner: GitClient | None = None,
-                 ripgrep_runner: RipgrepClient | None = None):
+                 ripgrep_runner: RipgrepClient | None = None,
+                 tree_runner: TreeClient | None = None,
+                 scc_runner: SccClient | None = None):
         self.git_commit = None
-        self.prog_lang = None
-        self.code_size = None
+        self.prog_lang = []
+        self.code_size = 0
         self.repo_path = resolve_path(repo_path)
         self._git_runner = git_runner if git_runner else GitClient(self.repo_path)
         self._ripgrep_runner = ripgrep_runner if ripgrep_runner else RipgrepClient()
-        self.out_path = resolve_path(out_path) if out_path is not None else resolve_path(REPO_STRUCTURE_PATH)
+        # self.out_path = resolve_path(out_path) if out_path is not None else resolve_path(REPO_STRUCTURE_PATH)
+        self._tree_runner = tree_runner if tree_runner else TreeClient()
+        self._scc_runner = scc_runner if scc_runner else SccClient()
 
     def get_git_commit(self) -> None:
         self.git_commit = self._git_runner.rev_parse_head()
+        write_to_file("E:\\Indie developer\\project\\C drive clean tool\\AI-Powered-Engnieering-Knowledge-System\\windirstat_architecture\\00_repository_map\\01_repository_structure.md",
+                      ["- repository current commit HASH: ",
+                       self.git_commit,
+                       "\n"],
+                       mode = 'a')
 
     def get_git_branch(self) -> None:
-        result = self._git_runner.current_branch()
-        write_to_file(self.out_path, 
+        branch = self._git_runner.current_branch()
+        write_to_file("E:\\Indie developer\\project\\C drive clean tool\\AI-Powered-Engnieering-Knowledge-System\\windirstat_architecture\\00_repository_map\\01_repository_structure.md", 
                       [ "- repository current git branch: ",
-                       result.stdout.strip()])
+                       branch,
+                       "\n"],
+                       mode='a')
     
     def get_git_status(self) -> None:
-        result = self._git_runner.short_status()
-        write_to_file(self.out_path,
+        status = self._git_runner.short_status()
+        write_to_file("E:\\Indie developer\\project\\C drive clean tool\\AI-Powered-Engnieering-Knowledge-System\\windirstat_architecture\\00_repository_map\\01_repository_structure.md",
                       ["- repository git status: ",
-                      result.stdout.strip()])
+                      status,
+                      "\n"],
+                      mode = 'a')
         
     def get_file_list(self, glob: str = "!**/.git/**") -> None:
-        result = self._ripgrep_runner.travel_files(glob=glob, cwd=self.repo_path)
-        # todo 写入文件
-        write_to_file()
+        file_list = self._ripgrep_runner.travel_files(glob=glob, cwd=self.repo_path)
+        write_to_file("E:\\Indie developer\\project\\C drive clean tool\\AI-Powered-Engnieering-Knowledge-System\\windirstat_architecture\\00_repository_map\\inventory\\architecture-files.txt",
+                      [file_list],
+                      mode='w')
+
+    def count_file_extension(self, source: str | Path):
+        with open(source, mode='r', encoding="utf-8") as f:
+            content = f.readlines()
+        
+        counter = Counter()
+        for file in content:
+            extension = file.split(".")[-1].strip()
+            counter["." + extension] += 1
+        with open("E:\\Indie developer\\project\\C drive clean tool\\AI-Powered-Engnieering-Knowledge-System\\windirstat_architecture\\00_repository_map\\inventory\\extension-stats.json",
+                  mode = 'w', encoding="utf-8") as f:
+            json.dump(counter, f, indent=2, ensure_ascii=False)
+
+    def get_file_tree(self):
+        file_tree = self._tree_runner.travel_f(self.repo_path)
+
+        write_to_file("E:\\Indie developer\\project\\C drive clean tool\\AI-Powered-Engnieering-Knowledge-System\\windirstat_architecture\\00_repository_map\\inventory\\repository-tree.txt",
+                      [file_tree],
+                      mode='w')
+
+    def get_repo_code_stats(self) -> None:
+        data = self._scc_runner.code_stats(cwd=self.repo_path)
+
+        with open("E:\\Indie developer\\project\\C drive clean tool\\AI-Powered-Engnieering-Knowledge-System\\windirstat_architecture\\00_repository_map\\inventory\\repository-code-statistics.json",
+                  mode='w', encoding="utf-8", errors="replace") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+        for item in data:
+            self.prog_lang.append(item.get("Name"))
+            self.code_size += item.get("Code",0)
+
+    def get_repo_structure(self):
+        with open("E:\\Indie developer\\project\\C drive clean tool\\AI-Powered-Engnieering-Knowledge-System\\windirstat_architecture\\00_repository_map\\inventory\\repository-tree.txt",
+                  mode='r', encoding="utf-8") as f:
+            repo_dir_tree = f.readlines()
+
+        with open("E:\\Indie developer\\project\\C drive clean tool\\AI-Powered-Engnieering-Knowledge-System\\windirstat_architecture\\00_repository_map\\inventory\\architecture-files.txt",
+                  mode='r', encoding="utf-8") as f:
+            file_list = f.readlines()
+        with open("E:\\Indie developer\\project\\C drive clean tool\\AI-Powered-Engnieering-Knowledge-System\\windirstat_architecture\\00_repository_map\\inventory\\extension-stats.json",
+                  mode = 'r', encoding="utf-8") as f:
+            file_extension_stats = json.load(f)
+
+        prompt = REPO_STRUCTURE_PROMPT.format(self.git_commit,
+                                            ", ".join(self.prog_lang),
+                                            str(self.code_size),
+                                            ''.join(repo_dir_tree),
+                                                              file_list,
+                                                              file_extension_stats)
+        prompt = ensure_clean(prompt)
+        with DeepSeekHarness(
+            dsh_home=r"E:\Indie developer\project\C drive clean tool\AI-Powered-Engnieering-Knowledge-System\dsh-home",   # 必填，SDK 不会自动发现 ~/.dsh
+            cwd=r"E:\Indie developer\project\C drive clean tool\AI-Powered-Engnieering-Knowledge-System\windirstat_architecture\00_repository_map",                # agent 的工作区
+            provider="deepseek-official",
+            model="deepseek-v4-pro",
+            reasoning_effort="max",
+            runtime_cwd = r"C:\Users\31608\dsh"
+            ) as harness:
+            session = harness.start_session("get windirstat repo structure - test")
+            perm_result = session.run("/permission workspace-write")
+            # print(perm_result.finish_reason)
+
+            result = session.run(prompt)
+        print("--- events ---")
+        for ev in result.events:
+            print(ev)
+        print(f"session_id: {result.session_id}")
+        print(f"final_response: {result.final_response}")
+        print("--- finish_reason ---")
+        print(f"finish_reason: {result.finish_reason}")
+        # print(f"events: {result.events}")
+        print("--- notifications ---")
+        print(f"notifications: {result.notifications}")
+        
+        
+
+
 
 
 
 if __name__ == "__main__":
     windirstat_struct = RepositoryStructure("../../windirstat/")
-    windirstat_struct.get_git_info()
-    print(windirstat_struct.git_commit)
+    windirstat_struct.get_git_commit()
+    windirstat_struct.get_git_branch()
+    windirstat_struct.get_git_status()
+    windirstat_struct.get_file_list()
+    windirstat_struct.count_file_extension("E:\\Indie developer\\project\\C drive clean tool\\AI-Powered-Engnieering-Knowledge-System\\windirstat_architecture\\00_repository_map\\inventory\\architecture-files.txt")
+    windirstat_struct.get_file_tree()
+    windirstat_struct.get_repo_code_stats()
+    windirstat_struct.get_repo_structure()
+    
