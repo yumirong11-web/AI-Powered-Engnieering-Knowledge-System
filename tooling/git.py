@@ -1,8 +1,7 @@
 from pathlib import Path
 
-from tool_errors import CommandError
-from command_runner import CommandRunner, CommandResult
-from tool_errors import CommandExitError
+from tooling.tool_errors import CommandExitError, CommandError
+from tooling.command_runner import CommandRunner, CommandResult
 
 class GitError(CommandError):
     '''Capture git semantic error'''
@@ -94,6 +93,7 @@ class GitClient:
         if not branch:
             raise DetachedHeadError("HEAD is detached, not on any branch",
                 argv=list(result.argv), cwd=result.cwd)
+        return branch
 
     def short_status(self) -> str:
         git_command = ["status", "--short"]

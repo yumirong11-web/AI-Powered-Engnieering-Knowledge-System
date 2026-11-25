@@ -1,9 +1,12 @@
 import subprocess
+import locale
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
-from tool_errors import (
+
+from tooling.tool_errors import (
     CommandError,
     CommandLaunchError,
     CommandExitError,
@@ -32,7 +35,7 @@ class CommandRunner:
         cwd_str = str(cwd) if cwd is not None else None
         try:
             proc = subprocess.run(argv_list,cwd=cwd_str,capture_output=True,text=True,
-                                  encoding="utf-8",errors="replace",
+                                  encoding=locale.getencoding(),errors="replace",
                                   timeout=self._default_timeout if timeout is None else timeout,
                                   check=False)
         except FileNotFoundError as e:

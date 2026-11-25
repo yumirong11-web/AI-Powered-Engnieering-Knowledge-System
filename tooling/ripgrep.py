@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from tool_errors import CommandError
-from command_runner import CommandRunner, CommandResult
+from tooling.tool_errors import CommandError
+from tooling.command_runner import CommandRunner, CommandResult
 
 class RipgrepError(CommandError):
     '''capture ripgrep semantic error'''
@@ -63,7 +63,7 @@ class RipgrepClient:
                 raise RipgrepShellexpansionError(f"'!' trigger shell history expansion error: {stderr}",
                                                  argv=list(result.argv), cwd=result.cwd)
             raise RipgrepError(stderr, argv=list(result.argv), cwd=result.cwd)
-        return result
+        return result.stdout.strip()
 
 if __name__ == "__main__":
     rpc = RipgrepClient()

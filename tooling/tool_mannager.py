@@ -5,9 +5,8 @@ from __future__ import annotations
 import platform
 import shutil
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
 from typing import Callable
 
 
@@ -99,6 +98,9 @@ def _install_tree() -> bool:
     # Windows 自带 tree.com，通常无需安装；若需 GNU tree 可走 choco
     return _install_via_choco("tree")
 
+def _install_scc() -> bool:
+    return _install_via_winget("BenBoyter.scc")
+
 
 # ---------- 注册表：新增工具只改这里 ----------
 
@@ -114,15 +116,22 @@ DEFAULT_TOOLS: list[ToolSpec] = [
         name="rg",
         check=lambda: _which("rg"),
         install=_install_rg,
-        required=False,
+        required=True,
         note="https://github.com/BurntSushi/ripgrep",
     ),
     ToolSpec(
         name="tree",
         check=lambda: _which("tree"),
         install=_install_tree,
-        required=False,
+        required=True,
         note="Windows 自带 tree.com；GNU tree 可通过 choco 安装",
+    ),
+    ToolSpec(
+        name="scc",
+        check=lambda: _which("scc"),
+        install=_install_scc,
+        required=True,
+        note="https://github.com/boyter/scc/"
     )
 ]
 
@@ -202,4 +211,5 @@ class ToolManager:
 
 if __name__ == "__main__":
     tm = ToolManager(auto_install=True)
-    tm.ensure_all()
+    # tm.ensure_all()
+    print(tm.ensure("tree"))
